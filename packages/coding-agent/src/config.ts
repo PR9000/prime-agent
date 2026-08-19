@@ -119,13 +119,19 @@ function isHomebrewInstall(): boolean {
 let freeBsdPkgInstallCache: boolean | undefined;
 
 function isFreeBsdPkgInstall(): boolean {
-	if (process.platform !== "freebsd") return false;
-	if (freeBsdPkgInstallCache !== undefined) return freeBsdPkgInstallCache;
+	if (freeBsdPkgInstallCache !== undefined) {
+		return freeBsdPkgInstallCache;
+	}
+	if (process.platform !== "freebsd") {
+		freeBsdPkgInstallCache = false;
+		return freeBsdPkgInstallCache;
+	}
 	const result = spawnSync("pkg", ["which", "-q", getPackageJsonPath()], {
 		encoding: "utf-8",
 		stdio: "ignore",
 	});
-	return (freeBsdPkgInstallCache = result.status === 0);
+	freeBsdPkgInstallCache = result.status === 0;
+	return freeBsdPkgInstallCache;
 }
 
 /** Reset the cached FreeBSD pkg-detection result (test only). */
