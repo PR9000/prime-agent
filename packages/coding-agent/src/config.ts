@@ -116,13 +116,21 @@ function isHomebrewInstall(): boolean {
 	return packageDir.includes("/cellar/") && packageDir.includes("/libexec/lib/node_modules/");
 }
 
+let freeBsdPkgInstallCache: boolean | undefined;
+
 function isFreeBsdPkgInstall(): boolean {
 	if (process.platform !== "freebsd") return false;
+	if (freeBsdPkgInstallCache !== undefined) return freeBsdPkgInstallCache;
 	const result = spawnSync("pkg", ["which", "-q", getPackageJsonPath()], {
 		encoding: "utf-8",
-		stdio: ["ignore", "pipe", "pipe"],
+		stdio: "ignore",
 	});
-	return result.status === 0;
+	return (freeBsdPkgInstallCache = result.status === 0);
+}
+
+/** Reset the cached FreeBSD pkg-detection result (test only). */
+export function _resetFreeBsdPkgCache(): void {
+	freeBsdPkgInstallCache = undefined;
 }
 
 function getInferredNpmInstall(): { root: string; prefix: string } | undefined {
