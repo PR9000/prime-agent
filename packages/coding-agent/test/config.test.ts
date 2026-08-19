@@ -15,6 +15,7 @@ import {
 import { getDefaultSessionDir } from "../src/core/session-manager.js";
 
 const execPathDescriptor = Object.getOwnPropertyDescriptor(process, "execPath");
+const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
 const originalPath = process.env.PATH;
 const originalPiPackageDir = process.env.PI_PACKAGE_DIR;
 const originalSessionDir = process.env[ENV_SESSION_DIR];
@@ -31,6 +32,9 @@ function setExecPath(value: string): void {
 afterEach(() => {
 	if (execPathDescriptor) {
 		Object.defineProperty(process, "execPath", execPathDescriptor);
+	}
+	if (platformDescriptor) {
+		Object.defineProperty(process, "platform", platformDescriptor);
 	}
 	if (originalPath === undefined) {
 		delete process.env.PATH;
@@ -76,6 +80,33 @@ function createHomebrewInstall(): { packageDir: string } {
 	const packageDir = join(prefix, "Cellar", "prime-agent", "0.7.0", "libexec", "lib", "node_modules", "prime-agent");
 	mkdirSync(packageDir, { recursive: true });
 	tempDir = prefix;
+	process.env.PI_PACKAGE_DIR = packageDir;
+	setExecPath(join(packageDir, "dist", "cli.js"));
+	return { packageDir };
+}
+
+function createFreeBSDPkgInstall(): { packageDir: string } {
+	const isWin = process.platform === "win32";
+	const temp = mkdtempSync(join(tmpdir(), "pi-freebsd-"));
+	const packageDir = join(temp, "local", "pi-coding-agent");
+	mkdirSync(packageDir, { recursive: true });
+	writeFileSync(join(packageDir, "package.json"), JSON.stringify({ name: "prime-agent", version: "0.7.3" }));
+
+	// Fake `pkg` binary that reports the file as pkg-managed (exit 0)
+	const binDir = join(temp, "bin");
+	mkdirSync(binDir, { recursive: true });
+	if (isWin) {
+		writeFileSync(join(binDir, "pkg.bat"), "@echo off\r\nexit /b 0\r\n");
+	} else {
+		writeFileSync(join(binDir, "pkg"), "#!/bin/sh\nexit 0\n");
+		chmodSync(join(binDir, "pkg"), 0o755);
+	}
+
+	// isFreeBsdPkgInstall() short-circuits when process.platform !== "freebsd"
+	Object.defineProperty(process, "platform", { value: "freebsd", configurable: true });
+
+	tempDir = temp;
+	process.env.PATH = `${binDir}${delimiter}${originalPath ?? ""}`;
 	process.env.PI_PACKAGE_DIR = packageDir;
 	setExecPath(join(packageDir, "dist", "cli.js"));
 	return { packageDir };
@@ -195,6 +226,19 @@ describe("detectInstallMethod", () => {
 		expect(getSelfUpdateCommand("prime-agent")).toBeUndefined();
 		expect(getSelfUpdateUnavailableInstruction("prime-agent")).toBe("Update with: brew upgrade prime-agent");
 		expect(getUpdateInstruction("prime-agent")).toBe("Update with: brew upgrade prime-agent");
+	});
+
+	test("detects FreeBSD pkg installs and does not self-update", () => {
+		createFreeBSDPkgInstall();
+
+		expect(detectInstallMethod()).toBe("freebsd-pkg");
+		expect(getSelfUpdateCommand("prime-agent")).toBeUndefined();
+		expect(getSelfUpdateUnavailableInstruction("prime-agent")).toBe(
+			"Update with: sudo pkg upgrade prime-agent (or doas pkg upgrade prime-agent)",
+		);
+		expect(getUpdateInstruction("prime-agent")).toBe(
+			"Update with: sudo pkg upgrade prime-agent (or doas pkg upgrade prime-agent)",
+		);
 	});
 
 	test("self-updates npm installs from custom prefixes", () => {

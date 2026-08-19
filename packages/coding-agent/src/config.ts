@@ -42,7 +42,7 @@ export const SELF_UPDATE_NOT_ATTEMPTED_EXIT_CODE = 75;
 // Install Method Detection
 // =============================================================================
 
-export type InstallMethod = "bun-binary" | "homebrew" | "npm" | "pnpm" | "yarn" | "bun" | "unknown";
+export type InstallMethod = "bun-binary" | "freebsd-pkg" | "homebrew" | "npm" | "pnpm" | "yarn" | "bun" | "unknown";
 
 interface SelfUpdateCommandStep {
 	command: string;
@@ -83,6 +83,9 @@ function makeSelfUpdateCommandStep(command: string, args: string[]): SelfUpdateC
 }
 
 export function detectInstallMethod(): InstallMethod {
+	if (isFreeBsdPkgInstall()) {
+		return "freebsd-pkg";
+	}
 	if (isBunBinary) {
 		return "bun-binary";
 	}
@@ -111,6 +114,15 @@ export function detectInstallMethod(): InstallMethod {
 function isHomebrewInstall(): boolean {
 	const packageDir = getPackageDir().toLowerCase().replace(/\\/g, "/");
 	return packageDir.includes("/cellar/") && packageDir.includes("/libexec/lib/node_modules/");
+}
+
+function isFreeBsdPkgInstall(): boolean {
+	if (process.platform !== "freebsd") return false;
+	const result = spawnSync("pkg", ["which", "-q", getPackageJsonPath()], {
+		encoding: "utf-8",
+		stdio: ["ignore", "pipe", "pipe"],
+	});
+	return result.status === 0;
 }
 
 function getInferredNpmInstall(): { root: string; prefix: string } | undefined {
@@ -160,6 +172,7 @@ function getSelfUpdateCommandForMethod(
 	const uninstallAfterInstall = isDirectPackageArtifactSpec(updateSpec);
 	switch (method) {
 		case "bun-binary":
+		case "freebsd-pkg":
 		case "homebrew":
 			return undefined;
 		case "pnpm":
@@ -258,6 +271,7 @@ function getGlobalPackageRoots(method: InstallMethod, _packageName: string, npmC
 			return roots;
 		}
 		case "bun-binary":
+		case "freebsd-pkg":
 		case "homebrew":
 		case "unknown":
 			return [];
@@ -332,6 +346,9 @@ export function getSelfUpdateUnavailableInstruction(
 	}
 	if (method === "homebrew") {
 		return `Update with: brew upgrade ${APP_NAME}`;
+	}
+	if (method === "freebsd-pkg") {
+		return `Update with: sudo pkg upgrade ${APP_NAME} (or doas pkg upgrade ${APP_NAME})`;
 	}
 	const command = getSelfUpdateCommandForMethod(method, packageName, updateSpec, npmCommand, updatePackageName);
 	if (command) {
