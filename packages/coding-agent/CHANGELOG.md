@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Added FreeBSD `pkg(8)` install method detection, returning `sudo pkg upgrade` / `doas pkg upgrade` instructions when the running binary is pkg-managed.
 - Fixed large IPython variables repeatedly slowing later turns by excluding them from persistent snapshots and removing them when context is compacted.
 - Fixed daemon socket paths being used verbatim in identity derivations: on supported platforms, `--daemon-socket` spellings differing only by duplicate or trailing slashes now normalize to one canonical path, so worker-descriptor namespaces, daemon log files, and persisted descriptors agree.
 - Added a `thinking` option to `rlm.run` for spawning subagents with an explicit reasoning level; invalid levels for the resolved child model fail spawn.
