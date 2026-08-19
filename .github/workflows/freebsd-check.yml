@@ -1,0 +1,40 @@
+name: FreeBSD Check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  freebsd-check:
+    runs-on: ubuntu-latest
+    name: FreeBSD 15.1 (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ["x86_64"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Check on FreeBSD 15.1
+        uses: vmactions/freebsd-vm@83b151f58c6047089f4c80eb5ba2039d158ce093 # v1
+        with:
+          release: "15.1"
+          arch: ${{ matrix.arch }}
+          sync: rsync
+          usesh: true
+          mem: 6144
+          cpu: 4
+          cache-after-prepare: true
+          prepare: |
+            pkg update -f
+            pkg install -y node22 npm-node22 gitup
+            gitup ports
+          run: |
+            npm install
+            npm run check
+            cd packages/coding-agent && npx vitest --run test/config.test.ts
