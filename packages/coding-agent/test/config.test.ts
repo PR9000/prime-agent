@@ -11,6 +11,7 @@ import {
 	getSelfUpdateUnavailableInstruction,
 	getSessionsDir,
 	getUpdateInstruction,
+	_resetFreeBsdPkgCache,
 } from "../src/config.js";
 import { getDefaultSessionDir } from "../src/core/session-manager.js";
 
@@ -30,6 +31,7 @@ function setExecPath(value: string): void {
 }
 
 afterEach(() => {
+	_resetFreeBsdPkgCache();
 	if (execPathDescriptor) {
 		Object.defineProperty(process, "execPath", execPathDescriptor);
 	}
@@ -239,6 +241,22 @@ describe("detectInstallMethod", () => {
 		expect(getUpdateInstruction("prime-agent")).toBe(
 			"Update with: sudo pkg upgrade prime-agent (or doas pkg upgrade prime-agent)",
 		);
+	});
+
+	test("does not detect freebsd-pkg outside FreeBSD even when pkg is present", () => {
+		const temp = mkdtempSync(join(tmpdir(), "pi-freebsd-neg-"));
+		const binDir = join(temp, "bin");
+		const isWin = process.platform === "win32";
+		mkdirSync(binDir, { recursive: true });
+		writeFileSync(
+			join(binDir, isWin ? "pkg.bat" : "pkg"),
+			isWin ? "@echo off\r\nexit /b 0\r\n" : "#!/bin/sh\nexit 0\n",
+		);
+		if (!isWin) chmodSync(join(binDir, "pkg"), 0o755);
+		tempDir = temp;
+		process.env.PATH = `${binDir}${delimiter}${originalPath ?? ""}`;
+		// platform is the host (NOT stubbed to freebsd) -> isFreeBsdPkgInstall() short-circuits
+		expect(detectInstallMethod()).not.toBe("freebsd-pkg");
 	});
 
 	test("self-updates npm installs from custom prefixes", () => {
