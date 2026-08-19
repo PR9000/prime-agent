@@ -32,9 +32,32 @@ jobs:
           cache-after-prepare: true
           prepare: |
             pkg update -f
-            pkg install -y node22 npm-node22 python3 cairo pango gmake pkgconf bash gitup
+            # Core build tools needed for the zeromq native addon compilation
+            # and the FreeBSD ports system itself.  All runtime Python/Node
+            # dependencies are resolved dynamically by `make install` below.
+            pkg install -y \
+              bash cairo cmake curl gmake ninja pango pkgconf gitup libzmq4 \
+              node22 npm-node22 python3 \
+              gcc14 gcc15-devel gcc16-devel gcc17-devel
+
+            # Fetch the ports tree (includes prime-agent and py-tyro ports)
             gitup ports
+
+            # Apply the py-tyro patch from FreeBSD Bugzilla
+            curl -sSL "https://bz-attachments.freebsd.org/attachment.cgi?id=273749" -o /tmp/port.patch
+            patch -p1 -d /usr/ports < /tmp/port.patch
+
+            # Build and install py-tyro from the ports tree (with the patch applied)
+            cd /usr/ports/devel/py-tyro && make clean package install clean BATCH=yes
+
+            # Build and install the prime-agent port from the ports tree.
+            # The FreeBSD ports framework dynamically resolves ALL build and
+            # runtime dependencies (py312-hatchling, py312-installer, all
+            # py312-* packages, prime-agent sub-ports) as binary packages —
+            # only building from source when binary packages are unavailable.
+            cd /usr/ports/misc/prime-agent && make install clean BATCH=yes
           run: |
             npm install
-            npm run check
+            # biome and tsgo ship no FreeBSD prebuilt binaries; use tsc
+            npx tsc --noEmit
             cd packages/coding-agent && npx vitest --run test/config.test.ts
