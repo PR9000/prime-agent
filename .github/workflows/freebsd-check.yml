@@ -32,7 +32,7 @@ jobs:
           cache-after-prepare: true
           prepare: |
             pkg update -f
-            pkg install -y node22 npm-node22 gitup
+            pkg install -y node22 npm-node22 python3 cairo pango gmake pkgconf bash gitup
             gitup ports
           run: |
             npm install
