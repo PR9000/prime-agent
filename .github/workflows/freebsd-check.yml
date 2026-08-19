@@ -32,30 +32,77 @@ jobs:
           cache-after-prepare: true
           prepare: |
             pkg update -f
-            # Core build tools needed for the zeromq native addon compilation
-            # and the FreeBSD ports system itself.  All runtime Python/Node
-            # dependencies are resolved dynamically by `make install` below.
-            pkg install -y \
-              bash cairo cmake curl gmake ninja pango pkgconf gitup libzmq4 \
-              node22 npm-node22 python3 \
-              gcc14 gcc15-devel gcc16-devel gcc17-devel
 
-            # Fetch the ports tree (includes prime-agent and py-tyro ports)
+            # 1. Dynamically resolve Python package name (e.g. python312) and prefix (e.g. py312-)
+            PY_PKG=$(pkg search -x '^python3[0-9]+$' | awk '{print $1}' | head -n1)
+            
+            # Fallback to python312 if detection returns empty
+            if [ -z "$PY_PKG" ]; then
+              PY_PKG="python312"
+            fi
+
+            # Extract major/minor version (e.g. 3.12 and py312)
+            PY_RAW_VER=$(echo "$PY_PKG" | sed 's/python//')               # e.g. 312
+            PY_DOT_VER=$(echo "$PY_RAW_VER" | sed 's/\([0-9]\)\([0-9]\{2\}\)/\1.\2/') # e.g. 3.12
+            PY_PREFIX="py${PY_RAW_VER}-"                                  # e.g. py312-
+
+            echo "Detected Python package: $PY_PKG"
+            echo "Detected Python version: $PY_DOT_VER"
+            echo "Detected Python package prefix: $PY_PREFIX"
+
+            # 2. Install base system tools and dynamic Python packages
+            pkg install -y \
+              bash \
+              cairo \
+              cmake gmake \
+              curl \
+              gcc14 gcc15-devel gcc16-devel gcc17-devel \
+              git gitup \
+              libzmq4 \
+              ninja \
+              node22 npm-node22 \
+              pango \
+              pkgconf \
+              "$PY_PKG" \
+              "${PY_PREFIX}beautifulsoup" \
+              "${PY_PREFIX}dill" \
+              "${PY_PREFIX}hatchling" \
+              "${PY_PREFIX}httpx" \
+              "${PY_PREFIX}installer" \
+              "${PY_PREFIX}ipykernel" \
+              "${PY_PREFIX}lxml" \
+              "${PY_PREFIX}matplotlib" \
+              "${PY_PREFIX}mcp" \
+              "${PY_PREFIX}nest-asyncio2" \
+              "${PY_PREFIX}numpy" \
+              "${PY_PREFIX}pandas" \
+              "${PY_PREFIX}pillow" \
+              "${PY_PREFIX}pydantic2" \
+              "${PY_PREFIX}python-dotenv" \
+              "${PY_PREFIX}pyyaml" \
+              "${PY_PREFIX}pyzmq" \
+              "${PY_PREFIX}requests" \
+              "${PY_PREFIX}scipy" \
+              "${PY_PREFIX}tomli"
+
+            # 3. Dynamically create python3 and python symlinks from installed binary
+            PY_BIN="/usr/local/bin/python${PY_DOT_VER}"
+            if [ -f "$PY_BIN" ]; then
+              ln -sf "$PY_BIN" /usr/local/bin/python3
+              ln -sf "$PY_BIN" /usr/local/bin/python
+            fi
+
+            # 4. Update ports tree
             gitup ports
 
-            # Apply the py-tyro patch from FreeBSD Bugzilla
+            # 5. Download and apply the patch from Bugzilla into /usr/ports
             curl -sSL "https://bz-attachments.freebsd.org/attachment.cgi?id=273749" -o /tmp/port.patch
             patch -p1 -d /usr/ports < /tmp/port.patch
 
-            # Build and install py-tyro from the ports tree (with the patch applied)
-            cd /usr/ports/devel/py-tyro && make clean package install clean BATCH=yes
+            # 6. Build and install the new port non-interactively
+            cd /usr/ports/devel/py-tyro
+            make clean package install clean BATCH=yes
 
-            # Build and install the prime-agent port from the ports tree.
-            # The FreeBSD ports framework dynamically resolves ALL build and
-            # runtime dependencies (py312-hatchling, py312-installer, all
-            # py312-* packages, prime-agent sub-ports) as binary packages —
-            # only building from source when binary packages are unavailable.
-            cd /usr/ports/misc/prime-agent && make install clean BATCH=yes
           run: |
             npm install
             # biome and tsgo ship no FreeBSD prebuilt binaries; use tsc
